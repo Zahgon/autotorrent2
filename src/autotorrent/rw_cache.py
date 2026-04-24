@@ -20,25 +20,7 @@ class ReadWriteFileCache:
         self.chown_str = chown_str
 
     def cleanup_cache(self):
-        removed_paths = []
-        for path in self.path.iterdir():
-            if time.time() - path.stat().st_mtime > self.ttl:
-                logger.debug(f"Path {path} is older than ttl and should be deleted")
-                conf_path = path / CW_CACHE_CONF_NAME
-                conf = json.loads(conf_path.read_text())
-                source_path = Path(conf["source_path"])
-                for target_path in conf["target_paths"]:
-                    link_type = target_path["link_type"]
-                    target_path = Path(target_path["path"])
-                    if not target_path.exists():
-                        logger.warning(f"Target path {target_path!s} does not exist")
-                        continue
-                    logger.debug(f"Rewriting {target_path!s} to {source_path!s}")
-                    target_path.unlink()
-                    create_link(source_path, target_path, link_type)
-                removed_paths.append(path)
-                shutil.rmtree(path)
-        return removed_paths
+        pass
 
     def cache_file(self, path, target_path, link_type):
         full_folder_name = "__".join(path.parts[1:])

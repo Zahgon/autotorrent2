@@ -184,43 +184,13 @@ class PathRewriter:
         self.handle_path_mappings(path_mappings)
 
     def handle_path_mappings(self, path_mappings):
-        for i, path_mapping in enumerate(path_mappings):
-            for path in path_mapping:
-                path = Path(path)
-                path_tuple = self._tuplify(path)
-                self.paths[path_tuple] = i
-                self.path_groups.setdefault(i, []).append(path)
+        pass
 
     def rewrite_path(self, path, prefix_match=False):
-        postfix_path = None
-        orig_path = path
-        while path:
-            if postfix_path and not prefix_match:  # nothing matched
-                break
-
-            path_tuple = self._tuplify(path)
-            path_group_id = self.paths.get(path_tuple)
-            if path_group_id is not None:
-                if postfix_path is None:
-                    return list(self.path_groups[path_group_id])
-                else:
-                    return [p / postfix_path for p in self.path_groups[path_group_id]]
-
-            if postfix_path is None:
-                postfix_path = Path(path.name)
-            else:
-                postfix_path = Path(path.name) / postfix_path
-
-            path = path.parent
-
-        return [orig_path]
+        pass
 
     def _tuplify(self, path):
-        p = []
-        while path.name:
-            p.append(path.name)
-            path = path.parent
-        return tuple(p[::-1])
+        pass
 
 
 def validate_path(path):
@@ -277,54 +247,10 @@ class Pieces:
 
     def hash_piece(self, f):
         """Hashes a full piece from a single file, returns the hash-digest"""
-        missing_size = self.piece_length
-        hasher = hashlib.sha1()
-        logger.debug(f"Trying to read {missing_size} bytes")
-
-        while missing_size:
-            d = f.read(min(16384, missing_size))
-            if not d:
-                logger.warning(
-                    f"We expected to be able to read more data with missing size {missing_size}, bailing"
-                )
-                return None
-            missing_size -= len(d)
-            hasher.update(d)
-
-        return hasher.digest()
+        pass
 
     def calculate_offsets(self, size, is_last_file=False):
-        start_piece, start_offset = divmod(self.start_size, self.piece_length)
-        first_complete_piece = start_piece
-        if start_offset:
-            first_complete_piece += 1
-            start_offset = self.piece_length - start_offset
-
-        end_size = self.start_size + size
-        end_piece, end_offset = divmod(end_size, self.piece_length)
-        last_complete_piece = end_piece
-        if end_offset and not is_last_file:
-            last_complete_piece -= 1
-
-        piece_calculation = PieceCalculation(
-            start_piece,
-            start_offset,
-            first_complete_piece,
-            end_piece,
-            end_offset,
-            last_complete_piece,
-            self.pieces[start_piece : end_piece + 1],
-            self.pieces[first_complete_piece : last_complete_piece + 1],
-        )
-        logger.debug(
-            f"Piece calculation start_piece: {piece_calculation.start_piece} "
-            f"start_offset: {piece_calculation.start_offset} "
-            f"first_complete_piece: {piece_calculation.first_complete_piece} "
-            f"end_piece: {piece_calculation.end_piece} "
-            f"end_offset: {piece_calculation.end_offset} "
-            f"last_complete_piece: {piece_calculation.last_complete_piece}"
-        )
-        return piece_calculation
+        pass
 
     def probe_hash(self, size, fp):
         """
@@ -332,20 +258,7 @@ class Pieces:
 
         Returns True if passed, False if failed, None if not possible
         """
-        piece_calculation = self.calculate_offsets(size)
-        if not piece_calculation.complete_pieces:
-            return None
-
-        pieces_to_verify = set([0])
-        if len(piece_calculation.complete_pieces) > 1:
-            pieces_to_verify.add(len(piece_calculation.complete_pieces) - 1)
-
-        for piece in pieces_to_verify:
-            fp.seek(piece_calculation.start_offset + piece * self.piece_length)
-            if self.hash_piece(fp) != piece_calculation.complete_pieces[piece]:
-                return False
-
-        return True
+        pass
 
 
 class Torrent(
@@ -356,200 +269,14 @@ class Torrent(
 ):
     def is_problematic(self):
         # TODO: check if the torrent can cause problems with some clients
-        return False
+        pass
 
     def verify_hash(self, fnmatches, file_mapping):
         """Returns a torrent_file mapping of failed and successful matched files"""
-        # loop files, build list of pieces to verify
-        pieces_to_verify = set()
-        missing_pieces = set()
-        for torrent_file in self.filelist:
-            piece_calculation = torrent_file.pieces.calculate_offsets(
-                torrent_file.size, is_last_file=torrent_file.is_last_file
-            )
-            torrent_file_pieces = set(
-                range(piece_calculation.start_piece, piece_calculation.end_piece + 1)
-            )
-            for pattern in fnmatches:
-                if fnmatch(torrent_file.path.name, pattern):
-                    pieces_to_verify |= torrent_file_pieces
-                    break
-            else:
-                if not file_mapping[torrent_file.path]:
-                    missing_pieces |= torrent_file_pieces
-
-        piece_status = {}
-        file_piece_mapping = {}
-        file_has_inner_pieces = {}
-        hasher, hasher_piece, data_left, fp, skip_to_piece = (
-            None,
-            None,
-            None,
-            None,
-            None,
-        )
-        for torrent_file in self.filelist:
-            piece_calculation = torrent_file.pieces.calculate_offsets(
-                torrent_file.size, is_last_file=torrent_file.is_last_file
-            )
-            file_has_inner_pieces[torrent_file] = (
-                piece_calculation.first_complete_piece
-                <= piece_calculation.last_complete_piece
-            )
-            full_path = file_mapping[torrent_file.path]
-            if not full_path:
-                piece_status[piece_calculation.start_piece] = None
-                piece_status[piece_calculation.end_piece] = None
-                skip_to_piece = piece_calculation.end_piece + 1
-                continue
-
-            for piece_index, piece in enumerate(
-                piece_calculation.pieces, piece_calculation.start_piece
-            ):
-                file_piece_mapping.setdefault(piece_index, []).append(torrent_file)
-                if skip_to_piece is not None and skip_to_piece > piece_index:
-                    continue
-
-                if piece_index not in pieces_to_verify:
-                    continue
-
-                if piece_index in piece_status:
-                    continue
-
-                if piece_index > piece_calculation.start_piece:
-                    expected_tell = piece_calculation.start_offset + (
-                        (piece_index - piece_calculation.first_complete_piece)
-                        * self.piece_length
-                    )
-                else:
-                    expected_tell = 0
-
-                if not fp:
-                    fp = full_path.open("rb")
-                    if expected_tell:
-                        fp.seek(expected_tell)
-
-                if hasher_piece != piece_index:
-                    hasher = hashlib.new("sha1", usedforsecurity=False)
-                    hasher_piece = piece_index
-                    data_left = min(
-                        self.size - (piece_index * self.piece_length), self.piece_length
-                    )
-                    if fp.tell() != expected_tell:
-                        fp.seek(expected_tell)
-
-                while data_left > 0:
-                    data = fp.read(min(HASHER_READ_BLOCK_SIZE, data_left))
-                    hasher.update(data)
-                    data_left -= len(data)
-                    if not data:
-                        break
-
-                if data_left == 0:
-                    piece_status[hasher_piece] = hasher.digest() == piece
-                    if not piece_status[hasher_piece]:
-                        skip_to_piece = piece_calculation.end_piece
-
-            if fp:
-                fp.close()
-                fp = None
-
-        file_status_mapping = {}
-        for torrent_file in self.filelist:
-            for pattern in fnmatches:
-                if fnmatch(torrent_file.path.name, pattern):
-                    piece_calculation = torrent_file.pieces.calculate_offsets(
-                        torrent_file.size, is_last_file=torrent_file.is_last_file
-                    )
-
-                    inner_piece_status = [
-                        piece_status.get(p)
-                        for p in range(
-                            piece_calculation.first_complete_piece,
-                            piece_calculation.last_complete_piece + 1,
-                        )
-                    ]
-                    edge_piece_status = []
-                    if (
-                        piece_calculation.start_piece
-                        != piece_calculation.first_complete_piece
-                    ):
-                        edge_piece_status.append(
-                            piece_status.get(piece_calculation.start_piece)
-                        )
-                        # check other files in same piece
-                    if (
-                        piece_calculation.end_piece
-                        != piece_calculation.last_complete_piece
-                    ):
-                        edge_piece_status.append(
-                            piece_status.get(piece_calculation.end_piece)
-                        )
-
-                    if (
-                        inner_piece_status
-                        and all(inner_piece_status)
-                        and all([p is not False for p in edge_piece_status])
-                    ):
-                        file_status_mapping[torrent_file] = "hash-success"
-                    elif not inner_piece_status and all(edge_piece_status):
-                        file_status_mapping[torrent_file] = "hash-success"
-                    elif (
-                        inner_piece_status
-                        and all(inner_piece_status)
-                        and all(
-                            [
-                                file_has_inner_pieces[tf]
-                                for tf in file_piece_mapping[
-                                    piece_calculation.start_piece
-                                ]
-                            ]
-                        )
-                        and all(
-                            [
-                                file_has_inner_pieces[tf]
-                                for tf in file_piece_mapping[
-                                    piece_calculation.end_piece
-                                ]
-                            ]
-                        )
-                    ):
-                        file_status_mapping[torrent_file] = "hash-success"
-                    else:
-                        file_status_mapping[torrent_file] = "hash-failed"
-
-                    break
-
-        file_touch_status_mapping = {}
-        for torrent_file in self.filelist:
-            # if hash-failed or any pieces are failed, then it is touch-failed
-            # if any of the files in any of the pieces are missing, then it is touched-success
-            piece_calculation = torrent_file.pieces.calculate_offsets(
-                torrent_file.size, is_last_file=torrent_file.is_last_file
-            )
-            file_piece_results = {
-                piece_status[p]
-                for p in range(
-                    piece_calculation.start_piece, piece_calculation.end_piece + 1
-                )
-                if p in piece_status
-            }
-            if (
-                file_status_mapping.get(torrent_file) == "hash-failed"
-                or False in file_piece_results
-            ):
-                file_touch_status_mapping[torrent_file] = "touch-failed"
-            elif None in file_piece_results:
-                file_touch_status_mapping[torrent_file] = "touch-success"
-
-        return file_status_mapping, file_touch_status_mapping
+        pass
 
     def has_file_patterns(self, patterns):
-        for torrent_file in self.filelist:
-            for pattern in patterns:
-                if fnmatch(torrent_file.path.name, pattern):
-                    return True
-        return False
+        pass
 
 
 TorrentFile = namedtuple(
